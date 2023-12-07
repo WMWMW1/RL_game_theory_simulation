@@ -26,29 +26,37 @@ from environment import MultiAgentEnvironment
 def main():
     # 初始化环境和智能体
     env = MultiAgentEnvironment()
-    state_dim = 4  # 假设的状态维度
-    action_dim = 2  # 动作空间维度
-
+    state_dim = 2 * 8* 2  # 现在的状态维度为 2 agents * 4 history_length * 2 actions
+    action_dim = env.n_actions
     agent1_policy_net = PolicyNetwork(state_dim, action_dim)
     agent2_policy_net = PolicyNetwork(state_dim, action_dim)
-    
-    agent1 = PPOAgent(agent1_policy_net)
-    agent2 = PPOAgent(agent2_policy_net)
+
+    agent1 = PPOAgent(agent1_policy_net,action_dim)
+    agent2 = PPOAgent(agent2_policy_net,action_dim)
 
     num_episodes = 1000  # 总的训练回合数
 
     for episode in range(num_episodes):
         state = env.reset()
+        done = False
 
-        for step in range(4):  # 每个回合执行4次决策
+        while not done:
             action1, _ = agent1.select_action(state)
             action2, _ = agent2.select_action(state)
 
-            rewards = env.step([action1, action2])
+            new_state, rewards, done = env.step([action1, action2])
 
-            # 训练智能体
-            agent1.train(state, action1, rewards[0])
-            agent2.train(state, action2, rewards[1])
+            if not done:
+                # 训练智能体
+                agent1.train(state, action1, rewards[0])
+                agent2.train(state, action2, rewards[1])
+            else:
+                # 使用累积奖励进行训练
+                agent1.train(state, action1, rewards[0])
+                agent2.train(state, action2, rewards[1])
+
+            state = new_state
+
 
 if __name__ == "__main__":
     main()
