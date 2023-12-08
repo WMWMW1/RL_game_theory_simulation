@@ -27,7 +27,7 @@ class MultiAgentEnvironment:
     def __init__(self):
         self.n_agents = 2
         self.n_actions = 2
-        self.history_length = 8
+        self.history_length = 2
         self.history = torch.full((self.n_agents, self.history_length, 2), 3, dtype=torch.float32)
         self.cumulative_rewards = np.zeros(self.n_agents)
         self.current_step = 0
@@ -37,7 +37,7 @@ class MultiAgentEnvironment:
         if actions[0] == 0 and actions[1] == 0:
             # Both agents are friendly
             print("Both agents are friendly")
-            rewards = [1.5, 1.5]
+            rewards = [1.9, 1.9]
         elif actions[0] == 1 and actions[1] == 1:
             # Both agents are unfriendly
             print("Both agents are unfriendly")

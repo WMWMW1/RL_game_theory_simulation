@@ -28,12 +28,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import random
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 class PolicyNetwork(nn.Module):
     def __init__(self, input_dim, action_dim, n_heads=4, n_transformer_layers=2, transformer_hidden_dim=64):
         super(PolicyNetwork, self).__init__()
         self.fc1 = nn.Linear(input_dim, transformer_hidden_dim)
-        
-        # Transformer编码层
         self.transformer = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
                 d_model=transformer_hidden_dim, 
@@ -41,32 +43,32 @@ class PolicyNetwork(nn.Module):
             ), 
             num_layers=n_transformer_layers
         )
-        
         self.fc2 = nn.Linear(transformer_hidden_dim, 64)
         self.action_head = nn.Linear(64, action_dim)
         self.value_head = nn.Linear(64, 1)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
-        
-        # 为了使用Transformer层，我们需要将x调整为[seq_len, batch, feature]
-        x = x.unsqueeze(0)  # 假设seq_len=1
+        x = x.unsqueeze(0)
         x = self.transformer(x)
-        x = x.squeeze(0)  # 恢复到[batch, feature]
-
+        x = x.squeeze(0)
         x = F.relu(self.fc2(x))
         action_probs = F.softmax(self.action_head(x), dim=-1)
         state_values = self.value_head(x)
-
         return action_probs, state_values
 
 class PPOAgent:
     def __init__(self, policy_network, action_dim):
-        self.policy_network = policy_network
-        self.action_dim = action_dim  # Store action_dim as an instance variable
+        self.policy_network = policy_network.to(device)  # Move model to CUDA
+        self.action_dim = action_dim
         self.optimizer = torch.optim.Adam(policy_network.parameters(), lr=1e-3)
+
     def compute_advantages(self, rewards, values, next_values, masks, gamma=0.99, tau=0.95):
-        values = values + [next_values]
+        # Make sure all tensors are on the same device
+        values = values + [next_values.to(device)]
+        rewards = [r.to(device) for r in rewards]
+        masks = [m.to(device) for m in masks]
+
         gae = 0
         returns = []
         for step in reversed(range(len(rewards))):
@@ -74,52 +76,32 @@ class PPOAgent:
             gae = delta + gamma * tau * masks[step] * gae
             returns.insert(0, gae + values[step])
         return returns
+
     def get_values(self, states):
+        states = states.to(device)  # Move states to CUDA
         _, values = self.policy_network(states)
         return values.squeeze(-1)
 
-    def select_action(self, state, epsilon=0.1):
-        if random.random() < epsilon:
-            action = torch.tensor([random.randrange(self.action_dim)], dtype=torch.int64)
-            with torch.no_grad():
-                action_probs, _ = self.policy_network(state.unsqueeze(0))
-            log_prob = torch.log(action_probs.squeeze(0)[action])
-        else:
-            with torch.no_grad():
-                action_probs, _ = self.policy_network(state.unsqueeze(0))
-            action = torch.multinomial(action_probs, 1).item()
-            log_prob = torch.log(action_probs.squeeze(0)[action])
-
+    def select_action(self, state):
+        state = state.to(device)  # Move state to CUDA
+        with torch.no_grad():
+            action_probs, _ = self.policy_network(state.unsqueeze(0))
+        action = torch.multinomial(action_probs, 1).item()
+        log_prob = torch.log(action_probs.squeeze(0)[action])
         return action, log_prob
-    # def select_action(self, state):
-    #     with torch.no_grad():
-    #         action_probs, _ = self.policy_network(state.unsqueeze(0))
-    #     action = torch.multinomial(action_probs, 1).item()
-    #     log_prob = torch.log(action_probs.squeeze(0)[action])
-
-    #     return action, log_prob
-
-
 
     def train(self, state, action, reward, PPO_EPOCHS=10, PPO_EPSILON=0.2):
-        # Use clone().detach() if state is already a tensor
-        state = state.clone().detach().unsqueeze(0) if torch.is_tensor(state) else torch.tensor(state, dtype=torch.float32).unsqueeze(0)
-        action = torch.tensor([action], dtype=torch.int64)
-        reward = torch.tensor([reward], dtype=torch.float32)
+        state = torch.tensor(state, dtype=torch.float32).to(device).unsqueeze(0)
+        action = torch.tensor([action], dtype=torch.int64).to(device)
+        reward = torch.tensor([reward], dtype=torch.float32).to(device)
 
         for _ in range(PPO_EPOCHS):
             action_probs, state_value = self.policy_network(state)
             dist = torch.distributions.Categorical(action_probs)
             action_log_prob = dist.log_prob(action).float()
-
-            # Ensure state_value has the same shape as reward
             state_value = state_value.squeeze()
-
-            # Compute the losses
             value_loss = F.mse_loss(state_value, reward)
             policy_loss = -action_log_prob * (reward - state_value.detach())
-
-            # Optimization step
             self.optimizer.zero_grad()
             (policy_loss + value_loss).backward()
             self.optimizer.step()

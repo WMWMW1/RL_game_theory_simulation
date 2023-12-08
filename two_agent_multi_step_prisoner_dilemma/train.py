@@ -26,7 +26,7 @@ from environment import MultiAgentEnvironment
 def main():
     # 初始化环境和智能体
     env = MultiAgentEnvironment()
-    state_dim = 2 * 8* 2  # 现在的状态维度为 2 agents * 4 history_length * 2 actions
+    state_dim = 2 * 2* 2  # 现在的状态维度为 2 agents * 4 history_length * 2 actions
     action_dim = env.n_actions
     agent1_policy_net = PolicyNetwork(state_dim, action_dim)
     agent2_policy_net = PolicyNetwork(state_dim, action_dim)
