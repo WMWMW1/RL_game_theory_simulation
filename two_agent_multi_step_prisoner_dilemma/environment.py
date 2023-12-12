@@ -41,7 +41,7 @@ class MultiAgentEnvironment:
         elif actions[0] == 1 and actions[1] == 1:
             # Both agents are unfriendly
             print("Both agents are unfriendly")
-            rewards = [-2, -2]
+            rewards = [-1, -1]
         elif actions[0] == 0 and actions[1] == 1:
             # First agent is friendly, second is unfriendly
             print("First agent is friendly, second is unfriendly")
